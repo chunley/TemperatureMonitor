@@ -107,12 +107,12 @@ cp TemperatureMonitor.cfg /home/pi/bin
 ### Configuration
 Configuration of temperature alert ranges are done in /home/pi/bin/TemperatureMonitor.cfg.  Here you can set the following(numbers indicate line #).  All temperatures are in Fahrenheit.
 1. Refrigerator low range.
-* Refrigerator high range.
-* Freezer low range.
-* Freezer high range.
-* Alert e-mail address.
-* gmail account.
-* gmail password.
+2. Refrigerator high range.
+3. Freezer low range.
+4. Freezer high range.
+5. Alert e-mail address.
+6. gmail account.
+7. gmail password.
 <br/>
 <br/>
 
