@@ -1,0 +1,18 @@
+{
+   "RANGES": {
+      "LowFridge": "31",
+      "HighFridge": "56",
+      "LowFreezer": "-10",
+      "HighFreezer": "20"
+   },
+   "ALERTEMAIL": {
+      "EmailAddress": "<user@domain.com>",
+      "GmailAccount": "<gmailaccont@gmail.com",
+      "GmailPassword": "<gmail password>"
+   },
+   "MQTT": {
+      "HOSTNAME": "<MQTT hostname or IP>",
+      "FRIDGE_TOPIC": "<topic for refrigerator temperature>",
+      "FREEZER_TOPIC": "<topic for freezer temperature>"
+   }
+}

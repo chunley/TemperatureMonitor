@@ -98,14 +98,14 @@ python3 /usr/share/doc/python3-pifacecad/examples/sysinfo.py
 * Get TemperatureMonitor
 ```
 cd /home/pi
-git clone <insert URL Here>
+git clone https://github.com/chunley/TemperatureMonitor.git
 mkdir /home/pi/bin
 cd TemperatureMonitor
-cp TemperatureMonitor.cfg /home/pi/bin
+cp TemperatureMonitor.json /home/pi/bin
 ```
 
 ### Configuration
-Configuration of temperature alert ranges are done in /home/pi/bin/TemperatureMonitor.cfg.  Here you can set the following(numbers indicate line #).  All temperatures are in Fahrenheit.
+Configuration of temperature alert ranges are done in /home/pi/bin/TemperatureMonitor.json.  Here you can set the following.  All temperatures are in Fahrenheit.
 1. Refrigerator low range.
 2. Refrigerator high range.
 3. Freezer low range.
@@ -113,18 +113,24 @@ Configuration of temperature alert ranges are done in /home/pi/bin/TemperatureMo
 5. Alert e-mail address.
 6. gmail account.
 7. gmail password.
+8. MQTT (Optional)
+    * MQTT Broker hostname/IP.
+    * MQTT topic for refrigerator temperature.
+    * MQTT topic for freezer temperature.
 <br/>
 <br/>
 
-#### Example
+#### MQTT Support
+[MQTT](https://mqtt.org) is a machine-to-machine Internet of Things communication protocol.  When enabled the refrigerator and freezer temperatures are published to the respective MQTT topics.  Once the temperatures are published, other *things* can subscribe to the topic and consume the temperature data.  If MQTT support is not desired, just remove the MQTT stanza from the TemperatureMonitor.json file.  Topic examples,
+
 ```
-1
-56
--10
-8
-John.Doe@gmail.com
-John.Doe@gmail.com
-mypassword
+kitchen/fridge/temperature
+kitchen/freezer/temperature
+```
+
+To install python MQTT
+```
+sudo pip3 install paho-mqtt
 ```
 
 ### Assembly
@@ -177,12 +183,20 @@ Buttons are numbered from left to right looking at PiFace CAD LCD.<br/>
 
 ### Future
 * Make time nightly update sent configurable.
+* Make getting the temperature sensor a class.
 * Program other buttons for changing configuration options.
-* Ignore comment lines it TemperatureMonitor.cfg.
 * Add ribbon cable between sensor and cable to sit flat against refrigerator/freezer seal.  This is to prevent frost build up and air leakage.
 
 ### Final Product
 ![TemperatureMonitor](images/final.jpg)
 
 ### License
-No license.  I put this project out for sharing and learning.
+MIT License
+
+Copyright (c) 2019 Charles Wade Hunley Jr
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
