@@ -15,12 +15,18 @@
 #    event driven instead of polling like Adafruit PiPlate LCD
 #    Modified to send an e-mail alert via smtp.gmail.com instead of text msg.
 #
-# License ?
-#   No license.  I put this project out for sharing and learning.
+#Modified by Chuck Hunley 01/11/2019
+#    * Modified to publish temperatures to MQTT broker.  MQTT is used to
+#      pass the temperatures to homebridge(Bridge to Apple HomeKit) .  MQTT
+#      is only used if configured.
+#    * Changed config file format to json
+#
+
 
 #
 # Import required modules
 #
+import json
 import signal
 import sys
 PY3 = sys.version_info[0] >= 3
@@ -181,6 +187,9 @@ class TimerClass(threading.Thread):
     # Thread run method
     #
     def run(self):
+        global mqttupdatesent
+        global initialupdate
+
         while not self.event.is_set():
             #
             # Read and check temperature range
@@ -193,6 +202,30 @@ class TimerClass(threading.Thread):
                 lcdlock.release()
 
             checkTempRanges(fridgeTemp, freezerTemp)
+
+            #
+            # Check if time to publish to MQTT
+            #
+
+            if useMQTT:
+                #
+                # List to hold MTQQ messages
+                #
+                mqtt_messages = []
+
+                #
+                # Homebridge only deals with temperatures in celsius.  Convert
+                # to Farenheit
+                #
+                temperature = float(fridgeTemp)
+                temperature = (temperature - 33) * 5/9
+                mqtt_messages.append({'topic' : fridgeTopic, 'payload' : str(temperature),})
+
+                temperature = float(freezerTemp)
+                temperature = (temperature - 33) * 5/9
+                mqtt_messages.append({'topic' : freezerTopic,'payload' : str(temperature),})
+                publish.multiple(mqtt_messages, hostname=mqtthostname)
+
             time.sleep(2)        # Sleep between temperature checks
             self.event.wait( 3 ) # Wait with 3 second timeout
 
@@ -314,7 +347,7 @@ def sendAlertMessage(message, address):
     s.send_message(msg) # Send message
     s.quit()            # Close connection
 
-
+#
 # sendStatusMessage - Send a status e-mail messasge to e-mail
 #                    address in specified config file.
 def sendStatusMessage(message, address):
@@ -430,35 +463,112 @@ except:
   lcd.write("Error 23 Reading\nTemp Sensor!")
   exit(23)
 
+#
 # Read config file to set defaults
-# Config file contains a separate line for each of these(in Farenheit)
-# Low Fridge Temp
-# High Fridge Temp
-# Low Freezer Temp
-# High Freezer Temp
-# e-mail address to send alert message
-# gmail account name
-# gmail password
-try:
-  f = open('/home/pi/bin/TemperatureMonitor.cfg', 'r')
-except:
-  print ("Error on file Open TemperatureMonitor.cfg")
-  lcd.clear()
-  lcd.write("Error on open \nTemperatureMonitor.cfg")
-  exit(22)
-lines = f.readlines()
-f.close()
+#
+with open('/home/pi/bin/TemperatureMonitor.json', 'r') as f:
+    config = json.load(f)
 
 #
-# Setup ranges and alert e-mail address
+# Setup ranges, alert e-mail address, and MQTT configuration
 #
-workLowFridge  = int(lines[0])
-workHiFridge   = int(lines[1])
-workLowFreezer = int(lines[2])
-workHiFreezer  = int(lines[3])
-emailaddress   = lines[4].rstrip('\n')
-smtplogin      = lines[5].rstrip('\n')
-password       = lines[6].rstrip('\n')
+try:
+    workLowFridge  = config['RANGES']['LowFridge']
+except:
+    pass  # if LowFridge not in config.json, use default
+
+try:
+    workHiFridge   = config['RANGES']['HighFridge']
+except:
+    pass # if HighFridge not in config.json, use default
+
+try:
+    workLowFreezer = config['RANGES']['LowFreezer']
+except:
+    pass # if LowFreezer not in config.son, use default
+
+try:
+    workHiFreezer  = config['RANGES']['HighFridge']
+except:
+    pass # if HighFridge not in config.json, use default
+
+#
+# Just in case message needs to be displayed to LCD
+lcd.clear()
+lcd.home()
+
+try:
+    emailaddress = config['ALERTEMAIL']['EmailAddress']
+except:
+    lcd.write("No EmailAddress\nin config")
+    time.sleep(5)
+    tempdisplay.close()
+    lcd.clear()
+    lcd.backlight_off()
+    exit(25)
+
+try:
+    smtplogin = config['ALERTEMAIL']['GmailAccount']
+except:
+    lcd.write("No GmailAccount\nin config")
+    tempdisplay.close()
+    lcd.clear()
+    lcd.backlight_off()
+    exit(26)
+
+try:
+    password = config['ALERTEMAIL']['GmailPassword']
+except:
+    lcd.write("No GmailPassword\nin config")
+    tempdisplay.close()
+    lcd.clear()
+    lcd.backlight_off()
+    exit(27)
+
+#
+# MQTT
+# If no mqtthostname, the consider MQTT disabled.
+# if there is a mqtt hostname, then there muse be a fridgeTopic and freezerTopic
+#
+try:
+    mqtthostname = config['MQTT']['HOSTNAME']
+except:
+    mqtthostname = None
+    lcd.clear()
+    lcd.home()
+    lcd.write("MQTT Not Enabled")
+    time.sleep(5)
+
+if mqtthostname:
+    try:
+        #
+        # Import MQTT to publish temperatures to MQTT broker
+        #
+        import paho.mqtt.client as mqtt
+        import paho.mqtt.publish as publish
+        mqttinstalled = True
+    except:
+        lcd.clear()
+        lcd.home()
+        lcd.write("Paha MQTT\nNot Installed")
+        time.sleep(5)
+        mqttinstalled = False
+
+    if mqttinstalled:
+        try:
+            fridgeTopic    = config['MQTT']['FRIDGE_TOPIC']
+            freezerTopic   = config['MQTT']['FREEZER_TOPIC']
+            useMQTT        = True
+        except:
+            lcd.clear()
+            lcd.home()
+            lcd.write("Error 24 MQTT\nTopic Config")
+            tempdisplay.close()
+            lcd.clear()
+            lcd.backlight_off()
+            exit(24)
+    else:
+        useMQTT = False
 
 #
 # Register signal handler and trap SIGTERM.
