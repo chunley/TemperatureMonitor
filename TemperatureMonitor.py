@@ -24,6 +24,9 @@
 #Modified by Chuck Hunley 08/03/2019
 #    * Create DS18B20 class for handling/reading 1-wire temperature sensors
 #
+#Modified by Chuck Hunley 08/15/2019
+#    * Add support for Celsius and make desired temperature units configurable
+#
 
 #
 # Import required modules
@@ -57,15 +60,18 @@ alertsent  = 1    # Initialize to not send.  Button 1 enables
 updatesent = 0
 toggledots = 1
 global lastsend
-lastsend = -1
+lastsend   = -1
 
 global lcdlock    # Lock to control write access to LCD
 
-# init the acceptable temperature ranges - these will be overridden by config file
+# Initialize the acceptable temperature ranges - these will be overridden by config file
 rangeLowFridge  = 30
 rangeHiFridge   = 45
 rangeLowFreezer = 30
 rangeHiFreezer  = 45
+
+# Unit identier for displaying Temperature ranges
+cUnit           = "F"
 
 #
 # Import time and sleep module
@@ -130,13 +136,16 @@ class SensorNotFound(DS18B20Error):
 #
 # DS18B20 class for reading DS18B20 1-wire temperature sensor
 #
-class DS18B20(object):
+class DS18B20:
 
     DEVICES_DIR = "/sys/bus/w1/devices"
     DEVICE_FILE = "w1_slave"
 
     UNIT_CELSIUS     = 0x01
     UNIT_FAHRENHEIT  = 0x02
+
+    UNIT_NAME_CELSIUS    = "Celsius"
+    UNIT_NAME_FAHRENHEIT = "Fahrenheit"
 
     #
     # Unit conversion functions
@@ -155,17 +164,33 @@ class DS18B20(object):
     }
 
     #
+    # Unit selector given unit string name
+    #
+    UNIT_SELECTOR = {
+        UNIT_NAME_CELSIUS    : UNIT_CELSIUS,
+        UNIT_NAME_FAHRENHEIT : UNIT_FAHRENHEIT
+    }
+
+    #
     # DS18B20 class constructor
     #
-    def __init__(self, w1_sensor_id=None):
+    def __init__(self, w1_sensor_id=None, unit=UNIT_FAHRENHEIT):
         self.id   = w1_sensor_id
         self.devicepath = os.path.join(self.DEVICES_DIR, self.id, self.DEVICE_FILE)
+        self.unit = unit
 
     #
     # Get unit indicator for this sensor instance
     #
     def getUnitIndicator(self):
         return self.UNIT_INDICATOR[self.unit]
+
+    #
+    # Select units
+    #
+    @classmethod
+    def getUnit(cls, strUnit=UNIT_NAME_FAHRENHEIT):
+        return cls.UNIT_SELECTOR[strUnit]
 
     #
     # Private method to get desired conversion function
@@ -179,9 +204,8 @@ class DS18B20(object):
     #
     def _read_temp_raw(self):
         try:
-            f = open(self.devicepath, 'r')
-            lines = f.readlines()
-            f.close()
+            with open(self.devicepath, 'r') as f:
+                lines = f.readlines()
         except IOError:
             raise SensorNotFound(self.id)
         return lines
@@ -189,12 +213,16 @@ class DS18B20(object):
     #
     # Public method to get sensor temperature in desired units
     #
-    def getTemperature(self, unit=UNIT_FAHRENHEIT):
+    def getTemperature(self, unit=None):
         # Get raw sensor data
         data = self._read_temp_raw()
 
-        # Save unit used for this sensor
-        self.unit = unit
+        #
+        # If unit is None, then use default when class was instantiated,
+        # otherwise user passed in unit as override.
+        #
+        if unit is None:
+            unit = self.unit
 
         # Get conversion functions for 'unit'
         convert = self._get_temp_conversion(unit)
@@ -245,11 +273,13 @@ class TempDisplay(object):
     def showTemperatureRanges(self, event=None):
         lcdlock.acquire()
         try:
-            message = "Fridge : %sF-%sF" % (rangeLowFridge,rangeHiFridge)
+            temprange = "{0:>3}{2}{1:>3}{2}".format(rangeLowFridge, rangeHiFridge, cUnit)
+            message   = "Fridge :{0:>8}".format(temprange) 
             self.cad.lcd.clear()
             self.cad.lcd.write(message)
 
-            message = "\nFreezer: %sF-%sF" % (rangeLowFreezer,rangeHiFreezer)
+            temprange = "{0:>3}{2}{1:>3}{2}".format(rangeLowFreezer, rangeHiFreezer, cUnit)
+            message   = "\nFreezer:{0:>8}".format(temprange)
             self.cad.lcd.write(message)
         finally:
             lcdlock.release()
@@ -299,20 +329,20 @@ class TimerClass(threading.Thread):
 
                 lcd.home()
 
-                lcd.write("Fridge " + semi[toggledots] + ' ')
                 try:    
                     fridgeTemp  = self.fridge.getTemperature()
-                    lcd.write(str('{:5.2f}'.format(fridgeTemp)))
+                    lcd.write("Fridge " + semi[toggledots] + ' ')
+                    lcd.write(str('{:6.2f}'.format(fridgeTemp)))
                     lcd.write_custom_bitmap(DEGREE_SYMBOL_INDEX)
                 except SensorNotFound:
                     lcd.write("------")
 
                 lcd.write("  ") # clear to end of line
-
-                lcd.write('\nFreezer'+ semi[toggledots] + ' ' )
+     
                 try:
                     freezerTemp = self.freezer.getTemperature()
-                    lcd.write(str('{:5.2f}'.format(freezerTemp)))
+                    lcd.write('\nFreezer'+ semi[toggledots] + ' ' )
+                    lcd.write(str('{:6.2f}'.format(freezerTemp)))
                     lcd.write_custom_bitmap(DEGREE_SYMBOL_INDEX)
                 except SensorNotFound:
                     lcd.write("------")
@@ -516,20 +546,34 @@ time.sleep(3)
 os.system('modprobe w1-gpio')
 os.system('modprobe w1-therm')
 
+#
+# Just in case message needs to be displayed to LCD
+#
+lcd.clear()
+lcd.home()
 
 #
 # Read config file to set defaults
 #
-with open(os.path.join(sys.path[0], 'TemperatureMonitor.json'), 'r') as f:
-    config = json.load(f)
+try:
+    with open(os.path.join(sys.path[0], 'TemperatureMonitor.json'), 'r') as f:
+        config = json.load(f)
+except IOError as error:
+    lcd.write("Config File\nNot found.")
+    time.sleep(5)
+    tempdisplay.close()
+    lcd.clear()
+    lcd.backlight_off()
+    exit(30)
 
 #
-# Setup sensors, ranges, alert e-mail address, and MQTT configuration
+# Setup sensors, units, ranges, alert e-mail address, and MQTT configuration
 #
 try:
     freezerSensor = config['SENSORS']['Freezer']
 except:
     lcd.write("No Freezer\nSensor in config")
+    time.sleep(5)
     tempdisplay.close()
     lcd.clear()
     lcd.backlight_off()
@@ -539,10 +583,19 @@ try:
     fridgeSensor = config['SENSORS']['Refrigerator']
 except:
     lcd.write("No Fridge\nSensor in config")
+    time.sleep(5)
     tempdisplay.close()
     lcd.clear()
     lcd.backlight_off()
     exit(29)
+
+try:
+    strUnit = config["UNIT"]
+except:
+    strUnit = "Fahrenheit"
+    pass
+
+unit = DS18B20.getUnit(strUnit)
 
 try:
     rangeLowFridge  = config['RANGES']['LowFridge']
@@ -564,12 +617,6 @@ try:
 except:
     pass # if HighFreezer not in config.json, use default
 
-#
-# Just in case message needs to be displayed to LCD
-#
-lcd.clear()
-lcd.home()
-
 try:
     emailaddress = config['ALERTEMAIL']['EmailAddress']
 except:
@@ -584,6 +631,7 @@ try:
     smtplogin = config['ALERTEMAIL']['GmailAccount']
 except:
     lcd.write("No GmailAccount\nin config")
+    time.sleep(5)
     tempdisplay.close()
     lcd.clear()
     lcd.backlight_off()
@@ -593,6 +641,7 @@ try:
     password = config['ALERTEMAIL']['GmailPassword']
 except:
     lcd.write("No GmailPassword\nin config")
+    time.sleep(5)
     tempdisplay.close()
     lcd.clear()
     lcd.backlight_off()
@@ -650,33 +699,32 @@ signal.signal(signal.SIGTERM, sigterm_handler)
 
 try:
     #
-    # Create message of acceptable ranges and display
-    #
-    message = "Fridge:  %sF-%sF" % (rangeLowFridge,rangeHiFridge)
-    lcd.clear()
-    lcd.write(message)
-
-    message = "\nFreezer: %sF-%sF" % (rangeLowFreezer,rangeHiFreezer)
-    lcd.write(message)
-    time.sleep( 3 )
-    lcd.clear()
-
-    #
     # Create instance for each sensor to monitor
     #
     try:
-        fridge  = DS18B20(freezerSensor)
+        fridge  = DS18B20(freezerSensor, unit)
         fridge.getTemperature()
     except SensorNotFound as e:
         lcd.write(e)
         time.sleep( 3 )
 
     try:
-        freezer = DS18B20(fridgeSensor)
+        freezer = DS18B20(fridgeSensor, unit)
         freezer.getTemperature()
     except SensorNotFound as e:
         lcd.write(e)
         time.sleep( 3 )
+
+    #
+    # Get unit indicator "C" or "F" for display
+    #
+    cUnit = freezer.getUnitIndicator()
+
+    #
+    # Create message of acceptable ranges and display
+    #
+    tempdisplay.showTemperatureRanges()
+
 
     #
     # Instantiate TimerClass thread.  This thread will monitor

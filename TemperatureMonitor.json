@@ -3,6 +3,7 @@
       "Freezer": "28-0115a51c67ff",
       "Refrigerator": "28-0115a51b4dff"
    },
+   "UNIT" : "Fahrenheit",
    "RANGES": {
       "LowFridge": "31",
       "HighFridge": "56",
