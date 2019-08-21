@@ -98,7 +98,7 @@ cat w1_slave
 
 * Install PiFace CAD modules
 
-NOTE: Raspbian Stretch pifacecad python module is not in repo.  You must must download and build.
+NOTE: Raspbian Stretch pifacecad python module is not in a repo.  You must must download and build.
 <https://github.com/piface/pifacecad>
 
 ```bash
@@ -117,25 +117,24 @@ python3 /usr/share/doc/python3-pifacecad/examples/sysinfo.py
 ```bash
 cd /home/pi
 git clone https://github.com/chunley/TemperatureMonitor.git
-mkdir /home/pi/bin
 cd TemperatureMonitor
-cp TemperatureMonitor.json /home/pi/bin
 ```
 
 ## Configuration
 
-Configuration of temperature alert ranges are done in /home/pi/bin/TemperatureMonitor.json.  Here you can set the following.  All temperatures are in Fahrenheit.
+Configuration of temperature alert ranges are done in TemperatureMonitor.json.  TemperatureMontir.json should be put in the same directory as `TemperatureMonitor.py`.  Here you can set the following.  All temperatures are in Fahrenheit.
 
 1. DS18B20 Freezer Sensor ID.
-2. DS18B20 Refrigerator Sensor ID.
-3. Refrigerator low range.
-4. Refrigerator high range.
-5. Freezer low range.
-6. Freezer high range.
-7. Alert e-mail address.
-8. gmail account.
-9. gmail password.
-10. MQTT (Optional)
+1. DS18B20 Refrigerator Sensor ID.
+1. Desired Temperature Units
+1. Refrigerator low range.
+1. Refrigerator high range.
+1. Freezer low range.
+1. Freezer high range.
+1. Alert e-mail address.
+1. gmail account.
+1. gmail password.
+1. MQTT (Optional)
     * MQTT Broker hostname/IP.
     * MQTT topic for refrigerator temperature.
     * MQTT topic for freezer temperature.
@@ -186,7 +185,7 @@ python3 TemperatureMonitor.py
 
 * Auto start at boot  
 To enable auto start on boot, a service needs to be created with systemd. Start by looking at tempmonitor.service.  Edit tempmonitor.service and update the path to your
-TemperatureMonitor.py.
+`TemperatureMonitor.py`.
 
 ```bash
 sudo cp tempmonitor.service /etc/systemd/system/tempmonitor.service
@@ -213,8 +212,7 @@ Buttons are numbered from left to right looking at PiFace CAD LCD.
 
 ## Future
 
-* Make desired units Fahrenheit or Celsius configurable
-* Make time of nightly update sent configurable.
+* Make time of nightly update sent configurable and better time delta handling for alerts.
 * Program other buttons for changing configuration options.
 * Add ribbon cable between sensor and cable to sit flat against refrigerator/freezer seal.  This is to prevent frost build up and air leakage.
 
