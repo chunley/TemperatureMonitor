@@ -13,10 +13,12 @@
    "ALERTEMAIL": {
       "EmailAddress": "<user@domain.com>",
       "GmailAccount": "<gmailaccont@gmail.com",
-      "GmailPassword": "<gmail password>"
+      "GmailPassword": "<gmail password>",
+      "STATUS_TIME" : "HH:MM",
+      "ALERT_INTERVAL" : "MM"
    },
    "MQTT": {
-      "HOSTNAME": "<MQTT hostname or IP>",
+      "BROKER_HOSTNAME": "<MQTT hostname or IP>",
       "FRIDGE_TOPIC": "<topic for refrigerator temperature>",
       "FREEZER_TOPIC": "<topic for freezer temperature>"
    }

@@ -3,30 +3,34 @@
 # TemperatureMonitory.py
 #   Raspberrypi based refrigerator and freezer temperature monitor.
 #
-#Based on Adafruit's Raspberry Pi Lesson 11 Temperature sensing tutorial by Simon Monk
+# Based on Adafruit's Raspberry Pi Lesson 11 Temperature sensing tutorial
+# by Simon Monk
 #    http://tinyurl.com/on5tpdr
-#Modified by Tim Massaro 2/2014
+# Modified by Tim Massaro 2/2014
 #    http://tinyurl.com/zsntd48
 #    This script now uses a Raspberry Pi, Adafruit PiPlate LCD and
 #    two DS18B20 temp sensor to monitor the freezer and fridge unit
 #    at Channel One Food Shelf
-#Modified by Chuck Hunley 10/9/2016
+# Modified by Chuck Hunley 10/9/2016
 #    Modified to use PiFace Control and Display 2.  The buttons are
 #    event driven instead of polling like Adafruit PiPlate LCD
 #    Modified to send an e-mail alert via smtp.gmail.com instead of text msg.
 #
-#Modified by Chuck Hunley 01/11/2019
+# Modified by Chuck Hunley 01/11/2019
 #    * Modified to publish temperatures to MQTT broker.  MQTT is used to
 #      pass the temperatures to homebridge(Bridge to Apple HomeKit) .  MQTT
 #      is only used if configured.
 #    * Changed config file format to json
 #
-#Modified by Chuck Hunley 08/03/2019
+# Modified by Chuck Hunley 08/03/2019
 #    * Create DS18B20 class for handling/reading 1-wire temperature sensors
 #
-#Modified by Chuck Hunley 08/15/2019
+# Modified by Chuck Hunley 08/15/2019
 #    * Add support for Celsius and make desired temperature units configurable
 #
+# Modified by Chuck Hunley 08/282019
+#    * Make status update e-mail time sent configurable
+#    * Make interval between alert e-mails configurable
 
 #
 # Import required modules
@@ -52,27 +56,6 @@ try:
 except ImportError:
     from io import StringIO
 
-from decimal import Decimal
-global alertsent  # used to avoid sending too many alert emails
-global toggledots # toggle the colon on LCD to indicate running
-global updatesent # Daily update sent
-alertsent  = 1    # Initialize to not send.  Button 1 enables
-updatesent = 0
-toggledots = 1
-global lastsend
-lastsend   = -1
-
-global lcdlock    # Lock to control write access to LCD
-
-# Initialize the acceptable temperature ranges - these will be overridden by config file
-rangeLowFridge  = 30
-rangeHiFridge   = 45
-rangeLowFreezer = 30
-rangeHiFreezer  = 45
-
-# Unit identier for displaying Temperature ranges
-cUnit           = "F"
-
 #
 # Import time and sleep module
 #
@@ -88,11 +71,44 @@ from threading import Barrier
 #
 # Import PiFace CaD modules
 #
-import pifacecommon
-import pifacecad
+import pifacecommon  # pylint: disable=import-error
+import pifacecad     # pylint: disable=import-error
 
 from enum import Enum
 from enum import IntEnum
+from decimal import Decimal
+
+global alert_enabled     # used to avoid sending too many alert emails
+global toggle_dots       # toggle the colon on LCD to indicate running
+global update_enabled    # Daily update sent
+global last_update       # Time of last status update message
+global last_alert        # Time of last alert message
+
+alert_enabled  = 1       # Initialize to send.  Button 1 disables
+update_enabled = 1
+toggle_dots    = 1
+last_update    = -1
+last_alert     = -1
+
+# HH:MM when to send status e-mail
+global status_report_time
+status_report_time = {}
+
+# HH interval betweenm sending alert e-mail
+global alert_interval
+alert_interval = 1
+
+global lcdlock    # Lock to control write access to LCD
+
+# Initialize the acceptable temperature ranges - these will be overridden
+# by config file
+rangeLowFridge  = 30
+rangeHiFridge   = 45
+rangeLowFreezer = 30
+rangeHiFreezer  = 45
+
+# Unit identier for displaying Temperature ranges
+cUnit           = "F"
 
 #
 # Enum for LCDStatus
@@ -152,15 +168,15 @@ class DS18B20:
     #
     UNIT_CONVERSION = {
         UNIT_CELSIUS:       lambda x: x/1000,
-        UNIT_FAHRENHEIT:    lambda x: x/1000 * 1.8 + 32.0 
+        UNIT_FAHRENHEIT:    lambda x: x/1000 * 1.8 + 32.0
     }
 
     #
-    # Units 
+    # Units
     #
     UNIT_INDICATOR = {
-        UNIT_CELSIUS:     "C", 
-        UNIT_FAHRENHEIT:  "F" 
+        UNIT_CELSIUS:     "C",
+        UNIT_FAHRENHEIT:  "F"
     }
 
     #
@@ -247,6 +263,7 @@ class TempDisplay(object):
 
     #
     # Toggle LCD back light on or off when button 0 pressed
+    # Button callback
     #
     def togglelcd(self, event=None):
         global lcdstatus
@@ -258,23 +275,30 @@ class TempDisplay(object):
             lcdstatus = LCDStatus.ON
 
     #
-    # Enable Alert e-mail.  First alert e-mail disables it
+    # Enable Alert e-mail.
+    # Button callback
     #
     def toggleAlertEmail(self, event=None):
-        global alertsent
-        if  alertsent == 1:
-            alertsent = 0
+        global alert_enabled
+        if  alert_enabled:
+            alert_enabled = 0
         else:
-            alertsent = 1
+            alert_enabled = 1
+
+        if update_enabled:
+            update_enabled = 0
+        else:
+            update_enabled = 1
 
     #
     # Show Temperature ranges
+    # Button callback
     #
     def showTemperatureRanges(self, event=None):
         lcdlock.acquire()
         try:
             temprange = "{0:>3}{2}{1:>3}{2}".format(rangeLowFridge, rangeHiFridge, cUnit)
-            message   = "Fridge :{0:>8}".format(temprange) 
+            message   = "Fridge :{0:>8}".format(temprange)
             self.cad.lcd.clear()
             self.cad.lcd.write(message)
 
@@ -288,7 +312,7 @@ class TempDisplay(object):
 
 
     #
-    # Clear and turn off LCD when button 5 press to exit
+    # Clear and turn off LCD when button 5 pressed to exit
     #
     def close(self, event=None):
         self.cad.lcd.clear()
@@ -308,7 +332,7 @@ class TimerClass(threading.Thread):
     # Thread run method
     #
     def run(self):
-        global toggledots
+        global toggle_dots
 
         #
         # Loop until internal flag is set to true.
@@ -322,26 +346,26 @@ class TimerClass(threading.Thread):
 
                 semi = ((' ',':'))   # toggle colon to prove we are running
 
-                if toggledots is 0:
-                    toggledots = 1
+                if toggle_dots is 0:
+                    toggle_dots = 1
                 else:
-                    toggledots = 0
+                    toggle_dots = 0
 
                 lcd.home()
 
-                try:    
+                try:
                     fridgeTemp  = self.fridge.getTemperature()
-                    lcd.write("Fridge " + semi[toggledots] + ' ')
+                    lcd.write("Fridge " + semi[toggle_dots] + ' ')
                     lcd.write(str('{:6.2f}'.format(fridgeTemp)))
                     lcd.write_custom_bitmap(DEGREE_SYMBOL_INDEX)
                 except SensorNotFound:
                     lcd.write("------")
 
                 lcd.write("  ") # clear to end of line
-     
+
                 try:
                     freezerTemp = self.freezer.getTemperature()
-                    lcd.write('\nFreezer'+ semi[toggledots] + ' ' )
+                    lcd.write('\nFreezer'+ semi[toggle_dots] + ' ' )
                     lcd.write(str('{:6.2f}'.format(freezerTemp)))
                     lcd.write_custom_bitmap(DEGREE_SYMBOL_INDEX)
                 except SensorNotFound:
@@ -364,7 +388,7 @@ class TimerClass(threading.Thread):
 
                 #
                 # Homebridge only accepts temperatures in celsius.  Convert
-                # to Celsius.  HomeKit will convert to Fahrenheit 
+                # to Celsius.  HomeKit will convert to Fahrenheit
                 #
                 temperature = float(fridgeTemp)
                 if fridge.unit is fridge.UNIT_FAHRENHEIT:
@@ -410,32 +434,55 @@ def sigterm_handler(_signo, _stack_frame):
 # ranges and error out if invalid
 #
 def checkTempRanges(fridgeTemp, freezerTemp):
-    global alertsent
-    global updatesent
-    global lastsend
+    global alert_enabled
+    global update_enabled
+    global last_update
+    global last_alert
+    global alert_interval
+    global status_report_time
+
 
     # Send update at midnight and reset alert messasge
     now = datetime.datetime.now()
-    if (now.hour is 0 and now.minute is 0 and updatesent is 0):
-        updatesent = 1
-        alertsent = 0
-        sendStatusMessage("Fridge  : " + str('{:5.2f}'.format(fridgeTemp)) + "\nFreezer: " + str('{:5.2f}'.format(freezerTemp)) + "\n--\n", emailaddress)
 
-    # Reset updatesent to enable next update message
-    if (now.hour is 0 and now.minute is 1):
-        updatesent = 0
+    #
+    # Only send update if enabled
+    #
+    if update_enabled:
+        # Initialize last_update if first pass
+        if last_update is -1:
+            last_update = now
 
-    if ((Decimal(fridgeTemp) > Decimal(rangeHiFridge)) or (Decimal(freezerTemp) > Decimal(rangeHiFreezer))):
-        if alertsent is 0: # don't sent too many alert messages
-            alertsent = 1
-            sendAlertMessage("Temperature too warm!\n\nFridge  : " + str('{:5.2f}'.format(fridgeTemp)) + "\nFreezer: " + str('{:5.2f}'.format(freezerTemp)) + "\n--\n", emailaddress)
-            lastsend = datetime.datetime.now()
+        #
+        # Send update at HH and MM, midnight is the default
+        # Determine elapsed time since last update to avoid
+        # over sending update.
+        #
+        elapsed = now - last_update
 
-    if ((Decimal(fridgeTemp) < Decimal(rangeLowFridge)) or (Decimal(freezerTemp) < Decimal(rangeLowFreezer))):
-        if alertsent is 0: # don't sent too many alert messages
-            alertsent = 1
-            sendAlertMessage("Temperature too cold!\n\nFridge  : " + str('{:5.2f}'.format(fridgeTemp)) + "\nFreezer: " + str('{:5.2f}'.format(freezerTemp)) + "\n--\n", emailaddress)
-            lastsend = datetime.datetime.now()
+        if (now.hour is status_report_time['HH'] and now.minute is status_report_time['MM'] and elapsed > datetime.timedelta(minutes=2)):
+            sendStatusMessage("Fridge  : " + str('{:5.2f}'.format(fridgeTemp)) + "\nFreezer: " + str('{:5.2f}'.format(freezerTemp)) + "\n--\n", emailaddress)
+            last_update = datetime.datetime.now()
+
+    #
+    # Only send alert e-mail if enabled.
+    #
+    if alert_enabled:
+        # Initialize last_alert if first pass
+        if last_alert is -1:
+            last_alert = now
+
+        elapsed = now - last_alert
+
+        if ((Decimal(fridgeTemp) > Decimal(rangeHiFridge)) or (Decimal(freezerTemp) > Decimal(rangeHiFreezer))):
+            if elapsed > datetime.timedelta(hours=alert_interval): # don't sent too many alert messages
+                sendAlertMessage("Temperature too warm!\n\nFridge  : " + str('{:5.2f}'.format(fridgeTemp)) + "\nFreezer: " + str('{:5.2f}'.format(freezerTemp)) + "\n--\n", emailaddress)
+                last_alert = datetime.datetime.now()
+
+        if ((Decimal(fridgeTemp) < Decimal(rangeLowFridge)) or (Decimal(freezerTemp) < Decimal(rangeLowFreezer))):
+            if elapsed > datetime.timedelta(hours=alert_interval): # don't send too many alert messages
+                sendAlertMessage("Temperature too cold!\n\nFridge  : " + str('{:5.2f}'.format(fridgeTemp)) + "\nFreezer: " + str('{:5.2f}'.format(freezerTemp)) + "\n--\n", emailaddress)
+                last_alert = datetime.datetime.now()
 
 
 #
@@ -567,7 +614,7 @@ except IOError as error:
     exit(30)
 
 #
-# Setup sensors, units, ranges, alert e-mail address, and MQTT configuration
+# Setup sensors, units, time to report status, ranges, alert e-mail address, and MQTT configuration
 #
 try:
     freezerSensor = config['SENSORS']['Freezer']
@@ -590,7 +637,7 @@ except:
     exit(29)
 
 try:
-    strUnit = config["UNIT"]
+    strUnit = config['UNIT']
 except:
     strUnit = "Fahrenheit"
     pass
@@ -647,13 +694,39 @@ except:
     lcd.backlight_off()
     exit(27)
 
+try:
+    strStatusTime = config['ALERTEMAIL']['STATUS_TIME']
+    hour, minute = strStatusTime.split(":")
+    if int(hour) not in range(0,25):
+        status_report_time['HH'] = 0
+    else:
+        status_report_time['HH'] = int(hour)
+
+    if (int(minute) not in range(0,60)):
+        status_report_time['MM'] = 0
+    else:
+        status_report_time['MM'] = int(minute)
+except:
+    # If no STATUS, default to midnight
+    status_report_time['HH'] = 0
+    status_report_time['MM'] = 0
+
+try:
+    strAlertInterval = config['ALERTEMAIL']['ALERT_INTERVAL']
+    alert_interval = int(strAlertInterval)
+    if alert_interval not in range(1,25):
+        alert_interval = 1
+except:
+    # No or invalid alert interval, default to 1 hr
+    alert_interval = 1
+
 #
 # MQTT
 # If no mqtthostname, the consider MQTT disabled.
 # if there is a mqtt hostname, then there must be a fridgeTopic and freezerTopic
 #
 try:
-    mqtthostname = config['MQTT']['HOSTNAME']
+    mqtthostname = config['MQTT']['BROKER_HOSTNAME']
 except:
     mqtthostname = None
     lcd.clear()
@@ -724,7 +797,6 @@ try:
     # Create message of acceptable ranges and display
     #
     tempdisplay.showTemperatureRanges()
-
 
     #
     # Instantiate TimerClass thread.  This thread will monitor

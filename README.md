@@ -122,18 +122,23 @@ cd TemperatureMonitor
 
 ## Configuration
 
-Configuration of temperature alert ranges are done in TemperatureMonitor.json.  TemperatureMontir.json should be put in the same directory as `TemperatureMonitor.py`.  Here you can set the following.  All temperatures are in Fahrenheit.
+Configuration of temperature alert ranges are done in TemperatureMonitor.json.  TemperatureMonitor.json should be put in the same directory as `TemperatureMonitor.py`.  Here you can set the following.  
 
-1. DS18B20 Freezer Sensor ID.
-1. DS18B20 Refrigerator Sensor ID.
+1. Sensors
+    * DS18B20 Freezer Sensor ID.
+    * DS18B20 Refrigerator Sensor ID.
 1. Desired Temperature Units
-1. Refrigerator low range.
-1. Refrigerator high range.
-1. Freezer low range.
-1. Freezer high range.
-1. Alert e-mail address.
-1. gmail account.
-1. gmail password.
+1. Temperature Ranges
+    * Refrigerator low range.
+    * Refrigerator high range.
+    * Freezer low range.
+    *Freezer high range.
+1. Alert e-mail
+    * Alert e-mail address.
+    * gmail account.
+    * gmail password.
+    * Status report time(HH:MM in 24hr) - Time of day to send status e-mail, default midnight
+    * Alert interval(HH) - Interval in hours between potential alert e-mail.
 1. MQTT (Optional)
     * MQTT Broker hostname/IP.
     * MQTT topic for refrigerator temperature.
@@ -202,7 +207,7 @@ TemperatureMonitor will now automatically start on boot up.
 Buttons are numbered from left to right looking at PiFace CAD LCD.
 
 * Button 1 - Toggle display backlight on/off
-* Button 2 - Re-enable Alert e-mail - will also re-enable at midnight.
+* Button 2 - Disable/re-enable Alert e-mail. Default: enabled
 * Button 3 - Show temperature range settings
 * Button 4 - not used.
 * Button 5 - Shutdown TemperatureMonitor
