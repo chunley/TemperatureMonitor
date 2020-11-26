@@ -132,7 +132,7 @@ Configuration of temperature alert ranges are done in TemperatureMonitor.json.  
     * Refrigerator low range.
     * Refrigerator high range.
     * Freezer low range.
-    *Freezer high range.
+    * Freezer high range.
 1. Alert e-mail
     * Alert e-mail address.
     * gmail account.
@@ -217,7 +217,6 @@ Buttons are numbered from left to right looking at PiFace CAD LCD.
 
 ## Future
 
-* Make time of nightly update sent configurable and better time delta handling for alerts.
 * Program other buttons for changing configuration options.
 * Add ribbon cable between sensor and cable to sit flat against refrigerator/freezer seal.  This is to prevent frost build up and air leakage.
 

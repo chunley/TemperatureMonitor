@@ -28,9 +28,14 @@
 # Modified by Chuck Hunley 08/15/2019
 #    * Add support for Celsius and make desired temperature units configurable
 #
-# Modified by Chuck Hunley 08/282019
+# Modified by Chuck Hunley 08/28/2019
 #    * Make status update e-mail time sent configurable
 #    * Make interval between alert e-mails configurable
+#
+# Modified by Chuck Hunley 10/07/2019
+#    * Remove hack for mobile Outlook not displaying last line of email
+#    * Catch and pass exception from publish.multiple().
+
 
 #
 # Import required modules
@@ -399,7 +404,18 @@ class TimerClass(threading.Thread):
                 if freezer.unit is freezer.UNIT_FAHRENHEIT:
                     temperature = (temperature - 32) * 5/9
                 mqtt_messages.append({'topic' : freezerTopic,'payload' : str('{:5.2f}'.format(temperature)),})
-                publish.multiple(mqtt_messages, hostname=mqtthostname)
+
+                #
+                # If in publish.multiple and a signal is sent to shutdown,
+                # or any other exception occures it takes down this thread
+                # Just 'pass' it for now.  The next call to publish a message
+                # should try to re-connect to the MQTT broker.
+                #
+                try:
+                    publish.multiple(mqtt_messages, hostname=mqtthostname)
+                except:
+                    pass
+                
 
             time.sleep(2)        # Sleep between temperature checks
             self.event.wait( 3 ) # Wait with 3 second timeout
@@ -461,7 +477,7 @@ def checkTempRanges(fridgeTemp, freezerTemp):
         elapsed = now - last_update
 
         if (now.hour is status_report_time['HH'] and now.minute is status_report_time['MM'] and elapsed > datetime.timedelta(minutes=2)):
-            sendStatusMessage("Fridge  : " + str('{:5.2f}'.format(fridgeTemp)) + "\nFreezer: " + str('{:5.2f}'.format(freezerTemp)) + "\n--\n", emailaddress)
+            sendStatusMessage("Fridge  : " + str('{:5.2f}'.format(fridgeTemp)) + "\nFreezer: " + str('{:5.2f}'.format(freezerTemp)), emailaddress)
             last_update = datetime.datetime.now()
 
     #
@@ -476,12 +492,12 @@ def checkTempRanges(fridgeTemp, freezerTemp):
 
         if ((Decimal(fridgeTemp) > Decimal(rangeHiFridge)) or (Decimal(freezerTemp) > Decimal(rangeHiFreezer))):
             if elapsed > datetime.timedelta(hours=alert_interval): # don't sent too many alert messages
-                sendAlertMessage("Temperature too warm!\n\nFridge  : " + str('{:5.2f}'.format(fridgeTemp)) + "\nFreezer: " + str('{:5.2f}'.format(freezerTemp)) + "\n--\n", emailaddress)
+                sendAlertMessage("Temperature too warm!\n\nFridge  : " + str('{:5.2f}'.format(fridgeTemp)) + "\nFreezer: " + str('{:5.2f}'.format(freezerTemp)), emailaddress)
                 last_alert = datetime.datetime.now()
 
         if ((Decimal(fridgeTemp) < Decimal(rangeLowFridge)) or (Decimal(freezerTemp) < Decimal(rangeLowFreezer))):
             if elapsed > datetime.timedelta(hours=alert_interval): # don't send too many alert messages
-                sendAlertMessage("Temperature too cold!\n\nFridge  : " + str('{:5.2f}'.format(fridgeTemp)) + "\nFreezer: " + str('{:5.2f}'.format(freezerTemp)) + "\n--\n", emailaddress)
+                sendAlertMessage("Temperature too cold!\n\nFridge  : " + str('{:5.2f}'.format(fridgeTemp)) + "\nFreezer: " + str('{:5.2f}'.format(freezerTemp)), emailaddress)
                 last_alert = datetime.datetime.now()
 
 
@@ -739,8 +755,8 @@ if mqtthostname:
         #
         # Import MQTT to publish temperatures to MQTT broker
         #
-        import paho.mqtt.client as mqtt
-        import paho.mqtt.publish as publish
+        import paho.mqtt.client as mqtt         # pylint: disable=import-error
+        import paho.mqtt.publish as publish     # pylint: disable=import-error
         mqttinstalled = True
     except:
         lcd.clear()

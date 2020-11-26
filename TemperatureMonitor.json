@@ -12,7 +12,7 @@
    },
    "ALERTEMAIL": {
       "EmailAddress": "<user@domain.com>",
-      "GmailAccount": "<gmailaccont@gmail.com",
+      "GmailAccount": "<gmailaccount@gmail.com>",
       "GmailPassword": "<gmail password>",
       "STATUS_TIME" : "HH:MM",
       "ALERT_INTERVAL" : "MM"
