@@ -16,10 +16,10 @@ This project (hardware and software) is based on a project by Tim Massaro he did
 8GB SD card  
 [PiFace Control and Display LCD](http://www.piface.org.uk/products/piface_control_and_display/)  
 2 [Waterproof DS18B20 Digital temperature sensor](https://www.adafruit.com/product/381) with 4.7k resistor  
-[PiFace Control and Display Case](https://tinyurl.com/y8uynxh4)  
+[PiFace Control and Display Case](https://www.thingiverse.com/thing:2750165) - hard to find. Search [Thingiverse](https://www.thingiverse.com) and 3D print your own.
 [Edimax EW-7811Un Wi-Fi USB adaptor](http://tinyurl.com/htkpvmb)  
 This adaptor meets Raspberry Pi Zero low power USB requirements.  
-Wi-Fi adaptor not needed if using the Raspberry Pi 3 or Raspberry Pi Zero W.  
+Wi-Fi adaptor not needed if using the Raspberry Pi 3 or later or Raspberry Pi Zero W.  
 2 [3.5mm stereo headphone jacks](http://tinyurl.com/h4pugfg)  
 2 [3.5mm stereo headphone plugs/connectors](http://tinyurl.com/hmeju6f)
 
@@ -31,10 +31,9 @@ Wi-Fi adaptor not needed if using the Raspberry Pi 3 or Raspberry Pi Zero W.
 * Wire cutter
 * 22 gauge solid hookup wire
 
-## Install Raspbian or Raspbian Lite
+## Install Raspberry Pi OS Full or Raspberry Pi OS Lite
 
-[Raspbian Download Page](https://www.raspberrypi.org/downloads/raspbian/)  
-[Raspbian Install Instructions](http://tinyurl.com/pxmle57)  
+[Raspberry Pi Software Download Page](https://www.raspberrypi.com/software/)  
 
 ## Setup
 
@@ -44,81 +43,86 @@ mine to `tempmonitor`.
 
 ## Install and update modules
 
-* Update Raspbian
+* Update Raspberry Pi OS
 
-```bash
-sudo apt-get update
-sudo apt-get upgrade
-```
+  ```bash
+  sudo apt-get update
+  sudo apt-get upgrade
+  ```
 
 * Install/update python 3 and python GPIO library
 
-```bash
-sudo apt-get install python3 python3-pip python-dev
-sudo pip3 rpi.gpio
-```
+  ```bash
+  sudo apt-get install python3 python3-pip python-dev
+  sudo pip3 rpi.gpio
+  ```
 
 * Enable SPI
 
-```bash
-sudo raspi-config
-Select "Advanced Options"
-Select "SPI"
-Select "Yes"
-Select "Ok"
-Select "Finish"
-```
+  ```bash
+  sudo raspi-config
+  Select "Advanced Options"
+  Select "SPI"
+  Select "Yes"
+  Select "Ok"
+  Select "Finish"
+  ```
 
 * Enable [1-Wire](https://en.wikipedia.org/wiki/1-Wire) support
 
-```bash
-sudo nano /boot/config.txt
-```
+  ```bash
+  sudo nano /boot/config.txt
+  ```
 
-Add the following line and save
+  Add the following line and save
 
-```bash
-dtoverlay=w1-gpio
-```
+  ```bash
+  dtoverlay=w1-gpio
+  ```
 
-Reboot
+  Reboot
 
-```bash
-sudo reboot
-```
+  ```bash
+  sudo reboot
+  ```
 
-Verify the sensors are working and the Raspberry Pi is reading them.
+  Verify the sensors are working and the Raspberry Pi is reading them.
 
-```bash
-cd /sys/bus/w1/devices
-ls
-cd 28-XXXX (Change XXXX to match serial number of sensor)
-cat w1_slave
-```
+  ```bash
+  cd /sys/bus/w1/devices
+  ls
+  cd 28-XXXX (Change XXXX to match serial number of sensor)
+  cat w1_slave
+  ```
 
 * Install PiFace CAD modules
 
-NOTE: Raspbian Stretch pifacecad python module is not in a repo.  You must must download and build.
-<https://github.com/piface/pifacecad>
+  **NOTE**: The pifacecad python module is not in the Raspbian Stretch and later repository.  You must download and build from <https://github.com/piface/pifacecad> or install directly from GitHub.
 
-```bash
-sudo apt-get install python3-pifacecad
-sudo shutdown -r now
-```
+  ```bash
+  pip install git+https://github.com/piface/pifacecommon.git git+https://github.com/piface/pifacecad.git lirc
+  ```
+
+  Older Raspbian versions:
+
+  ```bash
+  sudo apt-get install python3-pifacecad
+  sudo shutdown -r now
+  ```
 
 * Test PiFace CAD
 
-```bash
-python3 /usr/share/doc/python3-pifacecad/examples/sysinfo.py
-```
+  ```bash
+  python3 /usr/share/doc/python3-pifacecad/examples/sysinfo.py
+  ```
 
 * Get TemperatureMonitor
 
-```bash
-cd /home/pi
-git clone https://github.com/chunley/TemperatureMonitor.git
-cd TemperatureMonitor
-```
+  ```bash
+  cd /home/pi
+  git clone https://github.com/chunley/TemperatureMonitor.git
+  cd TemperatureMonitor
+  ```
 
 ## Configuration
 
@@ -143,10 +147,15 @@ Configuration of temperature alert ranges are done in TemperatureMonitor.json.  
     * MQTT Broker hostname/IP.
     * MQTT topic for refrigerator temperature.
     * MQTT topic for freezer temperature.
+1. Adafruit IO (Optional)
+    * UserName
+    * Key
+    * RefrigeratorKey
+    * FreezerKey
 
 ### MQTT Support
 
-[MQTT](https://mqtt.org) is a machine-to-machine Internet of Things communication protocol.  When enabled the refrigerator and freezer temperatures are published to the respective MQTT topics.  Once the temperatures are published, other *things* can subscribe to the topic and consume the temperature data.  If MQTT support is not desired, just remove the MQTT stanza from the TemperatureMonitor.json file.  Topic examples,
+[MQTT](https://mqtt.org) is a machine-to-machine Internet of Things communication protocol.  When enabled, the refrigerator and freezer temperatures are published to the respective MQTT topics.  Once the temperatures are published, other *things* can subscribe to the topic and consume the temperature data.  If MQTT support is not desired, just remove the MQTT stanza from the TemperatureMonitor.json file.  Topic examples,
 
 ```MTQQ
 kitchen/fridge/temperature
@@ -157,6 +166,16 @@ To install python MQTT
 
 ```bash
 sudo pip3 install paho-mqtt
+```
+
+### Adafruit IO Support
+
+[Adafruit IO](https://learn.adafruit.com/welcome-to-adafruit-io/overview) is a Cloud Service support by [Adafruit](https://www.adafruit.com) for displaying data in real-time, controlling motors, reading sensor data, etc.  Adafruit IO is free for the most part, as long as data rates are kept within the free-tier levels.  To itegrate with Adafruit IO, an account and keys are required.
+
+To install [Adafruit IO Python](https://github.com/adafruit/Adafruit_IO_Python)
+
+```bash
+sudo pip install adafruit-io
 ```
 
 ### Assembly
@@ -184,21 +203,21 @@ sudo pip3 install paho-mqtt
 
 * Manual
 
-```bash
-python3 TemperatureMonitor.py
-```
+  ```bash
+  python3 TemperatureMonitor.py
+  ```
 
 * Auto start at boot  
 To enable auto start on boot, a service needs to be created with systemd. Start by looking at tempmonitor.service.  Edit tempmonitor.service and update the path to your
 `TemperatureMonitor.py`.
 
-```bash
-sudo cp tempmonitor.service /etc/systemd/system/tempmonitor.service
-sudo systemctl daemon-reload
-sudo systemctl enable tempmonitor
-sudo systemctl start tempmonitor
-sudo systemctl status tempmonitor
-```
+  ```bash
+  sudo cp tempmonitor.service /etc/systemd/system/tempmonitor.service
+  sudo systemctl daemon-reload
+  sudo systemctl enable tempmonitor
+  sudo systemctl start tempmonitor
+  sudo systemctl status tempmonitor
+  ```
 
 TemperatureMonitor will now automatically start on boot up.
 

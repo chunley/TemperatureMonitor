@@ -35,11 +35,15 @@
 # Modified by Chuck Hunley 10/07/2019
 #    * Remove hack for mobile Outlook not displaying last line of email
 #    * Catch and pass exception from publish.multiple().
+#
+# Modified by Chuck Hunley 03/14/2021
+#    * Add Adafruit IO integration
 
 
 #
 # Import required modules
 #
+import os
 import json
 import signal
 import sys
@@ -48,7 +52,6 @@ if not PY3:
     print("TemperatureMonitor only works with 'python3'.")
     sys.exit(1)
 
-import os
 import time
 import datetime
 
@@ -57,14 +60,25 @@ import email
 from email.mime.text import MIMEText
 
 try:
-    from StringIO import StringIO
+    from StringIO import StringIO  # pylint: disable=import-error
 except ImportError:
-    from io import StringIO
+    from io import StringIO        # pylint: disable=import-error
+
+#
+# Import Adafruit IO library
+#
+try:
+    from Adafruit_IO import Client  # pylint: disable=import-error
+    print("Adafruit IO installed.")
+    adafruitIO_installed = True
+except ImportError:
+    print("Adafruit IO not installed.")
+    adafruitIO_installed = None
+    Client = None
 
 #
 # Import time and sleep module
 #
-import time
 from time import sleep
 
 #
@@ -150,9 +164,8 @@ class DS18B20Error(Exception):
     pass
 
 class SensorNotFound(DS18B20Error):
-   def __init__(self, sensorName):
+    def __init__(self, sensorName):
         super(SensorNotFound, self).__init__('Sensor not found\n {}'.format(sensorName))
-
 
 #
 # DS18B20 class for reading DS18B20 1-wire temperature sensor
@@ -285,6 +298,7 @@ class TempDisplay(object):
     #
     def toggleAlertEmail(self, event=None):
         global alert_enabled
+        global update_enabled
         if  alert_enabled:
             alert_enabled = 0
         else:
@@ -351,7 +365,7 @@ class TimerClass(threading.Thread):
 
                 semi = ((' ',':'))   # toggle colon to prove we are running
 
-                if toggle_dots is 0:
+                if toggle_dots == 0:
                     toggle_dots = 1
                 else:
                     toggle_dots = 0
@@ -364,6 +378,7 @@ class TimerClass(threading.Thread):
                     lcd.write(str('{:6.2f}'.format(fridgeTemp)))
                     lcd.write_custom_bitmap(DEGREE_SYMBOL_INDEX)
                 except SensorNotFound:
+                    fridgeTemp = -999
                     lcd.write("------")
 
                 lcd.write("  ") # clear to end of line
@@ -375,6 +390,7 @@ class TimerClass(threading.Thread):
                     lcd.write_custom_bitmap(DEGREE_SYMBOL_INDEX)
                 except SensorNotFound:
                     lcd.write("------")
+                    freezerTemp = -999
                 lcd.write("  ") # clear to end of line
             finally:
                 lcdlock.release()
@@ -414,8 +430,20 @@ class TimerClass(threading.Thread):
                 try:
                     publish.multiple(mqtt_messages, hostname=mqtthostname)
                 except:
+                    print("MQTT publish failed.")
                     pass
-                
+
+            #
+            # Check iF Adafruit IO is enabled and publish
+            # If the publish fails, just allow it and continue.
+            #
+            if useAdafruitIO:
+                try:
+                    aio.send_data(fridge_feed.key, float(fridgeTemp))
+                    aio.send_data(freezer_feed.key, float(freezerTemp))
+                except:
+                    print("Adafruit IO publish failed.")
+                    pass
 
             time.sleep(2)        # Sleep between temperature checks
             self.event.wait( 3 ) # Wait with 3 second timeout
@@ -444,7 +472,6 @@ def sigterm_handler(_signo, _stack_frame):
     lcd.backlight_off()
     sys.exit(0)
 
-
 #
 # check the fridge and freezer temps passed in vs the allowed
 # ranges and error out if invalid
@@ -457,7 +484,6 @@ def checkTempRanges(fridgeTemp, freezerTemp):
     global alert_interval
     global status_report_time
 
-
     # Send update at midnight and reset alert messasge
     now = datetime.datetime.now()
 
@@ -466,7 +492,7 @@ def checkTempRanges(fridgeTemp, freezerTemp):
     #
     if update_enabled:
         # Initialize last_update if first pass
-        if last_update is -1:
+        if last_update == -1:
             last_update = now
 
         #
@@ -485,7 +511,7 @@ def checkTempRanges(fridgeTemp, freezerTemp):
     #
     if alert_enabled:
         # Initialize last_alert if first pass
-        if last_alert is -1:
+        if last_alert == -1:
             last_alert = now
 
         elapsed = now - last_alert
@@ -499,7 +525,6 @@ def checkTempRanges(fridgeTemp, freezerTemp):
             if elapsed > datetime.timedelta(hours=alert_interval): # don't send too many alert messages
                 sendAlertMessage("Temperature too cold!\n\nFridge  : " + str('{:5.2f}'.format(fridgeTemp)) + "\nFreezer: " + str('{:5.2f}'.format(freezerTemp)), emailaddress)
                 last_alert = datetime.datetime.now()
-
 
 #
 # sendAlertMessage - Send alert e-mail messasge to e-mail
@@ -536,10 +561,10 @@ def sendStatusMessage(message, address):
 #
 
 try:   # sudo authority required
-  cad = pifacecad.PiFaceCAD()
+    cad = pifacecad.PiFaceCAD()
 except:
-  print ("Error, sudo authority required")
-  exit(21)
+    print ("Error, sudo authority required")
+    exit(21)
 
 #
 # listener cannot deactivate itself, so we have to wait until
@@ -718,7 +743,7 @@ try:
     else:
         status_report_time['HH'] = int(hour)
 
-    if (int(minute) not in range(0,60)):
+    if int(minute) not in range(0,60):
         status_report_time['MM'] = 0
     else:
         status_report_time['MM'] = int(minute)
@@ -743,11 +768,13 @@ except:
 #
 try:
     mqtthostname = config['MQTT']['BROKER_HOSTNAME']
+    print('mqtthostname: >{0}<'.format(mqtthostname))
 except:
     mqtthostname = None
     lcd.clear()
     lcd.home()
-    lcd.write("MQTT Not Enabled")
+    lcd.write("MQTT not enabled")
+    print("MQTT not enabled")
     time.sleep(5)
 
 if mqtthostname:
@@ -758,30 +785,77 @@ if mqtthostname:
         import paho.mqtt.client as mqtt         # pylint: disable=import-error
         import paho.mqtt.publish as publish     # pylint: disable=import-error
         mqttinstalled = True
+        print("Paho MQTT installed.")
     except:
         lcd.clear()
         lcd.home()
         lcd.write("Paho MQTT\nNot Installed")
+        print("Paho MQTT not installed.")
         time.sleep(5)
         mqttinstalled = False
 
     if mqttinstalled:
         try:
             fridgeTopic    = config['MQTT']['FRIDGE_TOPIC']
+            print('topic: {0}'.format(fridgeTopic))
             freezerTopic   = config['MQTT']['FREEZER_TOPIC']
+            print('topic: {0}'.format(freezerTopic))
             useMQTT        = True
         except:
             lcd.clear()
             lcd.home()
             lcd.write("Error 24 MQTT\nTopic Config")
+            time.sleep(5)
             tempdisplay.close()
             lcd.clear()
             lcd.backlight_off()
             exit(24)
     else:
         useMQTT = False
+        print("MQTT not installed.")
 
 #
+# Get Adafruit IO configuration.  If no, ADAFRUITIO, then
+# consider Adafruit IO disabled.
+#
+try:
+    adafruit_username = config['ADAFRUITIO']['UserName']
+    adafruit_key      = config['ADAFRUITIO']['Key']
+    fridge_key        = config['ADAFRUITIO']['RefrigeratorKey']
+    freezer_key       = config['ADAFRUITIO']['FreezerKey']
+    useAdafruitIO     = True
+except:
+    lcd.clear()
+    lcd.home()
+    lcd.write("Adafruit ID\nNot Enabled")
+    time.sleep(5)
+    useAdafruitIO = False
+    lcd.clear()
+    adafruit_username = None
+    adafruit_key = None
+    fridge_key = None
+    freezer_key = None
+
+#
+# Setup Adafruit IO connection and feeds
+#
+if useAdafruitIO and adafruitIO_installed is not None:
+    try:
+        aio          = Client(adafruit_username, adafruit_key)
+        fridge_feed  = aio.feeds(fridge_key)
+        freezer_feed = aio.feeds(freezer_key)
+    except:
+        lcd.clear()
+        lcd.home()
+        lcd.write("Adafruit IO\nFailed")
+        print("Adafruit IO failed.")
+        time.sleep(5)
+        tempdisplay.close()
+        lcd.clear()
+        lcd.backlight_off()
+        exit(26)
+
+
 # Register signal handler and trap SIGTERM.
 #
 signal.signal(signal.SIGTERM, sigterm_handler)
@@ -791,18 +865,26 @@ try:
     # Create instance for each sensor to monitor
     #
     try:
-        fridge  = DS18B20(freezerSensor, unit)
+        fridge  = DS18B20(fridgeSensor, unit)
         fridge.getTemperature()
     except SensorNotFound as e:
         lcd.write(e)
         time.sleep( 3 )
+        tempdisplay.close()
+        lcd.clear()
+        lcd.backlight_off()
+        exit(27)
 
     try:
-        freezer = DS18B20(fridgeSensor, unit)
+        freezer = DS18B20(freezerSensor, unit)
         freezer.getTemperature()
     except SensorNotFound as e:
         lcd.write(e)
         time.sleep( 3 )
+        tempdisplay.close()
+        lcd.clear()
+        lcd.backlight_off()
+        exit(28)
 
     #
     # Get unit indicator "C" or "F" for display

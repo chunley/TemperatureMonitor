@@ -21,5 +21,11 @@
       "BROKER_HOSTNAME": "<MQTT hostname or IP>",
       "FRIDGE_TOPIC": "<topic for refrigerator temperature>",
       "FREEZER_TOPIC": "<topic for freezer temperature>"
+   },
+   "ADAFRUITIO" : {
+      "UserName": "Adafruit IO User Name",
+      "Key": "Adafruit IO Key",
+      "RefrigeratorKey": "Feed key for refrigerator",
+      "FreezerKey": "Feed key for freezer"
    }
 }
